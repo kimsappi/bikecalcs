@@ -6,7 +6,10 @@ enum VariableNames {
 	speed,
 	accelerationTime,
 	rotationalPower,
-	translationalPower
+	translationalPower,
+	weightDifference,
+	incline,
+	climbTimes
 }
 
 export default VariableNames;
