@@ -4,8 +4,8 @@ import './App.css';
 
 interface IVariableDataObject {
   name: string,
-  value: number,
-  setFunction(value: number): void,
+  value: string, // need stringly typing to make entering decimals possible
+  setFunction(value: string): void,
   unit: string,
   variableName: number // comes from enum VariableNames
 }
@@ -36,11 +36,11 @@ const RotatingWeightInput =
   <div>
     {stateObject.name}
     <input
-      type='number'
+      type='text'
       value={stateObject.value}
       onChange={eventHandler}
-      id={stateObject.name.replace(' ', 'idSpacePlaceholder')}>
-    </input>
+      id={stateObject.name.replace(' ', 'idSpacePlaceholder')}
+    />
     {stateObject.unit}
   </div>
 );
@@ -51,7 +51,7 @@ const RotatingWeightInputs = ({inputData}: {inputData: Array<IVariableDataObject
   const handleDataChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const eventTargetId = event.target.id.replace('idSpacePlaceholder', ' ');
     const dataObject = inputData.filter(object => object.name === eventTargetId)[0];
-    dataObject.setFunction(Number(event.target.value));
+    dataObject.setFunction(event.target.value);
   };
 
   return (
@@ -71,7 +71,7 @@ const RotatingWeightOuput = ({data}: {data: IVariableDataObject}) => {
   return (
     <div>
       {data.name}
-      <input type='number' disabled value={data.value}></input>
+      <input type='text' disabled value={data.value}></input>
     </div>
   );
 };
@@ -81,17 +81,20 @@ const RotatingWeightOutputs = ({inputData, outputData}:
 
   /* Calculate moment of interia */
   const momentOfInertiaCalculator = (inputData: Array<IVariableDataObject>): number => {
-    const rimWeight = inputData.filter(data => data.variableName === VariableNames.rimWeight)[0].value;
-    const tyreCircumference = inputData.filter(data => data.variableName === VariableNames.tyreCircumference)[0].value;
-    const rimRadius = tyreCircumference / 3.4; // Magic constant a bit larger than pi
+    const rimWeight = Number(inputData.filter(data => data.variableName === VariableNames.rimWeight)[0].value);
+    const tyreCircumference = Number(inputData.filter(data => data.variableName === VariableNames.tyreCircumference)[0].value);
+    // Circumference = 2*pi*radius. The radius should be a bit smaller,
+    // so we use a magic constant & unit conversion
+    const rimRadius = tyreCircumference / 3.4 / 2 / 1000;
     return (rimWeight / 1000 * Math.pow(rimRadius, 2));
   };
 
   /* Calculate angular velocity of wheels */
   const angularVelocityCalculator = (inputData: Array<IVariableDataObject>): number => {
-    const tyreCircumference = inputData.filter(data => data.variableName === VariableNames.tyreCircumference)[0].value;
-    const speed = inputData.filter(data => data.variableName === VariableNames.speed)[0].value;
-    return (speed / tyreCircumference / 3600 * 2 * Math.PI);
+    const tyreCircumference = Number(inputData.filter(data => data.variableName === VariableNames.tyreCircumference)[0].value);
+    const speed = Number(inputData.filter(data => data.variableName === VariableNames.speed)[0].value);
+    // Speed is in km/h, need to convert to m/s, tyreCircumference mm->m
+    return (2 * Math.PI * (speed / 3.6) / (tyreCircumference / 1000));
   };
 
   /* Calculate power required for rotational acceleration */
@@ -99,30 +102,47 @@ const RotatingWeightOutputs = ({inputData, outputData}:
     const momentOfInertia = momentOfInertiaCalculator(inputData);
     const angularVelocity = angularVelocityCalculator(inputData);
     const rotationalEnergy = momentOfInertia * Math.pow(angularVelocity, 2) / 2;
-    const accelerationTime = inputData.filter(data => data.variableName === VariableNames.accelerationTime)[0].value;
+    const accelerationTime = Number(inputData.filter(data => data.variableName === VariableNames.accelerationTime)[0].value);
     return (rotationalEnergy / accelerationTime);
   };
 
-  /* Set acceleration power state to result of calculation */
-  outputData[0].setFunction(rotationalAccelerationPowerCalculator(inputData));
+  /* Calculate power required to translationally accelerate body+bike */
+  const translationalAccelerationPowerCalculator = (inputData: Array<IVariableDataObject>) => {
+    const bikeWeight = Number(inputData.filter(data => data.variableName === VariableNames.bikeWeight)[0].value);
+    const bodyWeight = Number(inputData.filter(data => data.variableName === VariableNames.bodyWeight)[0].value);
+    const accelerationTime = Number(inputData.filter(data => data.variableName === VariableNames.accelerationTime)[0].value);
+    const speed = Number(inputData.filter(data => data.variableName === VariableNames.speed)[0].value);
+    return (0.5 * (bikeWeight + bodyWeight) * Math.pow(speed / 3.6, 2) / accelerationTime);
+  };
+
+  /* Calculate output results and set the states */
+  const rotationalPower = rotationalAccelerationPowerCalculator(inputData);
+  const translationalPower = translationalAccelerationPowerCalculator(inputData);
+  const powerIsNaNMessage = 'Please enter valid numbers!';
+  outputData[0].setFunction(isNaN(rotationalPower) ? powerIsNaNMessage : rotationalPower.toString());
+  outputData[1].setFunction(isNaN(translationalPower) ? powerIsNaNMessage : translationalPower.toString());
 
   return (
     <div>
       <RotatingWeightOuput data={outputData[0]} />
       <RotatingWeightOuput data={outputData[1]} />
+      <input
+        type='range' min='0' max='1' step='0.001' readOnly
+        value={Number(outputData[0].value) / (Number(outputData[0].value) + Number(outputData[1].value))}
+      />
     </div>
   )
 };
 
 const RotatingWeightCalculator = () => {
-  const [rimWeight, setRimWeight] = useState(1200);
-  const [bodyWeight, setBodyWeight] = useState(70);
-  const [bikeWeight, setBikeWeight] = useState(7.5);
-  const [tyreCircumference, setTyreCircumference] = useState(2105);
-  const [speed, setSpeed] = useState(30);
-  const [accelerationTime, setAccelerationTime] = useState(5);
-  const [rotationalPower, setRotationalPower] = useState(0);
-  const [translationalPower, setTranslationalPower] = useState(0);
+  const [rimWeight, setRimWeight] = useState('1200');
+  const [bodyWeight, setBodyWeight] = useState('70');
+  const [bikeWeight, setBikeWeight] = useState('7.5');
+  const [tyreCircumference, setTyreCircumference] = useState('2105');
+  const [speed, setSpeed] = useState('30');
+  const [accelerationTime, setAccelerationTime] = useState('5');
+  const [rotationalPower, setRotationalPower] = useState('0');
+  const [translationalPower, setTranslationalPower] = useState('0');
 
   const inputData: Array<IVariableDataObject> = [
     {name: 'Rim weight', value: rimWeight, setFunction: setRimWeight, unit: 'g', variableName: VariableNames.rimWeight},
