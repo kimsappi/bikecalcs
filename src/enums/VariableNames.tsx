@@ -8,7 +8,6 @@ enum VariableNames {
 	rotationalPower,
 	translationalPower,
 	weightDifference,
-	incline,
 	climbTimes
 }
 
